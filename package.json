@@ -1,0 +1,21 @@
+{
+  "name": "cp-share",
+  "version": "0.1.0",
+  "description": "CP Share — Share Without Limits. Browser-based WebRTC file-sharing prototype (Phase 1).",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test tests/*.test.js",
+    "test:e2e": "node tests/e2e/transfer.e2e.mjs"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.0"
+  }
+}

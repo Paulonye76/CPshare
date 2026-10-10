@@ -1,0 +1,4 @@
+# Implemented vs not implemented
+**Implemented and tested here:** pairing codes, signaling, real WebRTC chunked transfer with backpressure + end-to-end flow control, SHA-256 verification, multi-file, accept/reject, cancel, stall/connection timeouts, safe filenames, OPFS streaming or memory fallback, all 19 pages + menu, local history/settings, server-side 401 gates, TURN config plumbing.
+**Not tested here:** Socket.IO transport and Express routes (no npm network in the build sandbox; handler logic is unit-tested), TURN relay, Safari/Firefox, real phones, large (GB) files, benchmarks.
+**Planned (clearly labelled in the UI):** accounts, login/registration, admin dashboard and RBAC, PostgreSQL (`db/schema.sql` draft), transfer reports to the server, rewarded ads, reward ledger, wallet, withdrawals and webhooks, FX estimates, support tickets, native Android (Kotlin) app.

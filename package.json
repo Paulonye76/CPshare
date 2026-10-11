@@ -9,7 +9,7 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "test": "node --test tests/*.test.js",
-    "test:e2e": "node tests/e2e/transfer.e2e.mjs"
+    "test:e2e": "node tests/e2e/transfer.e2e.mjs && node tests/e2e/ui.e2e.mjs && node tests/e2e/offline.e2e.mjs"
   },
   "dependencies": {
     "express": "^4.21.2",

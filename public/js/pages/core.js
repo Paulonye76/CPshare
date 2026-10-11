@@ -56,6 +56,7 @@ export const send = {
       <button class="btn primary lg" id="create" type="button" disabled>Create pairing code</button>
     </div>
   </div>
+  <p class="small muted center" data-phases="idle failed cancelled rejected done">No internet? <a href="#/offline-send">Use offline mode (QR code)</a></p>
   <div id="err-panel" data-phases="failed cancelled rejected" hidden></div>
   <div data-phases="creating" hidden><div class="card center">Creating a secure code…</div></div>
   <div data-phases="waiting" hidden>
@@ -139,6 +140,13 @@ export const send = {
   },
 };
 
+// Browsers cannot write straight into the Gallery. The Android share sheet can: pick Gallery / Photos there.
+const asFile = (f) => new File([f.blob], f.name, { type: f.type || f.blob.type || '' });
+function canShareFile(f) {
+  if (!/^(image|video)\//.test(f.type || '') || !navigator.canShare) return false;
+  try { return navigator.canShare({ files: [asFile(f)] }); } catch { return false; }
+}
+
 async function copyText(text) {
   try { await navigator.clipboard.writeText(text); } catch {
     const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select();
@@ -157,7 +165,8 @@ export const receive = {
     <div class="card stack"><div><label for="code-in">Pairing code</label>
       <input id="code-in" class="codeinput" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="9" placeholder="XXXX-XXXX" aria-describedby="code-help"></div>
       <p class="small muted" id="code-help">The code has 8 letters and numbers and is valid for a few minutes.</p>
-      <button class="btn primary lg" id="connect" type="button" disabled>Connect</button></div>
+      <button class="btn primary lg" id="connect" type="button" disabled>Connect</button>
+      <p class="small muted center" style="margin:0">No internet? <a href="#/offline-receive">Use offline mode (QR code)</a></p></div>
   </div>
   <div id="err-panel" hidden></div>
   <div data-phases="creating connecting" hidden><div class="card center"><b>Connecting to the sender…</b><p class="muted small">This usually takes a few seconds.</p><button class="btn ghost" data-act="cancel" type="button">Cancel</button></div></div>
@@ -292,8 +301,16 @@ export const success = {
     ].map(([k, v]) => `<div><span>${k}</span><b>${esc(v)}</b></div>`).join('');
     if (s.role === 'receiver') {
       $(root, '#saved').hidden = false;
-      $(root, '#saved-list').innerHTML = s.received.map((f, i) => `<li><span class="name">${esc(f.name)}</span><span class="meta">${fmtBytes(f.size)}</span><button class="btn" style="min-height:40px;padding:0 14px" data-save="${i}" type="button">Save</button></li>`).join('');
-      root.addEventListener('click', (e) => { const b = e.target.closest('[data-save]'); if (b) { const f = sessionStore.get().received[+b.dataset.save]; if (f) saveBlob(f.blob, f.name); } });
+      $(root, '#saved-list').innerHTML = s.received.map((f, i) => `<li><span class="name">${esc(f.name)}</span><span class="meta">${fmtBytes(f.size)}</span>${canShareFile(f) ? `<button class="btn" style="min-height:40px;padding:0 14px" data-gallery="${i}" type="button">Save to gallery</button>` : ''}<button class="btn" style="min-height:40px;padding:0 14px" data-save="${i}" type="button">Save</button></li>`).join('');
+      root.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-save]');
+        if (b) { const f = sessionStore.get().received[+b.dataset.save]; if (f) saveBlob(f.blob, f.name); return; }
+        const g = e.target.closest('[data-gallery]');
+        if (g) {
+          const f = sessionStore.get().received[+g.dataset.gallery];
+          try { await navigator.share({ files: [asFile(f)] }); } catch (err) { if (err?.name !== 'AbortError') toast('Could not open the share sheet. Use Save instead.', 'error'); }
+        }
+      });
     } else {
       // The server decides eligibility. We never assume it.
       getJSON('/api/rewards/eligibility').then(({ body }) => {

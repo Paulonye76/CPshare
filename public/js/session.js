@@ -5,6 +5,8 @@ import { createPeer } from './rtc.js';
 import { TransferSession } from './transfer.js';
 import { sessionStore, INITIAL_SESSION, getSettings, addHistory } from './store.js';
 import { saveBlob } from './storage.js';
+import { encodeSignal, decodeSignal } from './lib/offline-codec.js';
+import { requestCameraPermission } from './scanner.js';
 
 const CONNECT_TIMEOUT_MS = 20000;
 const ctx = { sig: null, peer: null, transfer: null, timers: [], inbox: [], channelOpen: false, t0: 0 };
@@ -149,4 +151,57 @@ export function cancelTransfer() {
   if (ctx.transfer && ctx.transfer.state !== 'init') ctx.transfer.cancel();
   else { logHistory('cancelled'); set({ phase: 'cancelled', cancelBy: 'self' }); teardown(); }
 }
-export const isActive = () => ['creating', 'waiting', 'connecting', 'awaiting-accept', 'transferring'].includes(phase());
+// ---------- Offline pairing (no server, no internet): QR codes carry the connection details ----------
+const offlinePeerState = (st) => {
+  if (st === 'failed' || st === 'closed') {
+    if (!['done', 'cancelled', 'rejected'].includes(phase())) fail('connection', 'Could not connect. Make sure both phones are on the same Wi-Fi or one is using the other\'s hotspot, then try again.');
+  }
+};
+
+export async function startOfflineSend(files) {
+  resetSession();
+  set({ role: 'sender', phase: 'offline-prepare', files, offline: true });
+  try {
+    await requestCameraPermission(); // also lets the browser expose this phone's real local address
+    ctx.t0 = performance.now();
+    ctx.peer = createPeer({
+      role: 'sender', iceServers: [], gatherAll: true,
+      sendSignal: (m) => { try { set({ phase: 'offline-show-offer', offlinePayload: encodeSignal(m) }); } catch (e) { fail('offline', e.message); } },
+      onChannel: (ch) => attachChannel(ch, 'sender'), onState: offlinePeerState,
+    });
+    await ctx.peer.start();
+  } catch (e) { fail('offline', e.message); }
+}
+
+export async function offlineApplyAnswer(text) {
+  try {
+    const m = decodeSignal(text.trim(), 'answer');
+    await ctx.peer.handleSignal(m);
+    set({ phase: 'connecting' });
+    ctx.timers.push(setTimeout(() => { if (!ctx.channelOpen) fail('connect-timeout', 'Could not connect in time. Make sure both phones are on the same Wi-Fi or hotspot.'); }, CONNECT_TIMEOUT_MS));
+    return true;
+  } catch (e) { return e.message; }
+}
+
+export async function startOfflineReceive() {
+  resetSession();
+  set({ role: 'receiver', phase: 'offline-scan-offer', offline: true });
+  try { await requestCameraPermission(); } catch (e) { fail('offline', e.message); }
+}
+
+export async function offlineApplyOffer(text) {
+  try {
+    const m = decodeSignal(text.trim(), 'offer');
+    ctx.t0 = performance.now();
+    ctx.peer = createPeer({
+      role: 'receiver', iceServers: [], gatherAll: true,
+      sendSignal: (a) => { try { set({ phase: 'offline-show-answer', offlinePayload: encodeSignal(a) }); } catch (e) { fail('offline', e.message); } },
+      onChannel: (ch) => attachChannel(ch, 'receiver'), onState: offlinePeerState,
+    });
+    ctx.timers.push(setTimeout(() => { if (!ctx.channelOpen) fail('connect-timeout', 'The sender did not scan your reply code in time. Start again.'); }, 120000));
+    await ctx.peer.handleSignal(m);
+    return true;
+  } catch (e) { return e.message; }
+}
+
+export const isActive = () => ['creating', 'waiting', 'connecting', 'awaiting-accept', 'transferring', 'offline-prepare', 'offline-show-offer', 'offline-scan-offer', 'offline-show-answer'].includes(phase());

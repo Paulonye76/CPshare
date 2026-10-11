@@ -6,12 +6,13 @@ import { cleanupStaging } from './storage.js';
 import * as core from './pages/core.js';
 import * as rw from './pages/rewards.js';
 import * as misc from './pages/misc.js';
+import * as off from './pages/offline.js';
 
 const routes = {
   '/': core.home, '/send': core.send, '/receive': core.receive, '/transfer': core.transfer, '/success': core.success,
   '/claim': rw.claim, '/wallet': rw.wallet, '/rewards-info': rw.rewardsInfo, '/withdraw': rw.withdraw, '/history': rw.history,
   '/profile': misc.profile, '/settings': misc.settings, '/help': misc.help, '/privacy': misc.privacy, '/terms': misc.terms,
-  '/login': misc.login, '/register': misc.register, '/admin-login': misc.adminLogin, '/admin': misc.admin, '/more': misc.more,
+  '/offline-send': off.offlineSend, '/offline-receive': off.offlineReceive, '/login': misc.login, '/register': misc.register, '/admin-login': misc.adminLogin, '/admin': misc.admin, '/more': misc.more,
 };
 const notFound = { title: 'Not found', nav: '', render: () => '<h1>Page not found</h1><p class="muted">That page does not exist.</p><a class="btn primary" href="#/">Go home</a>' };
 
@@ -50,9 +51,9 @@ function paintBanner() {
   const b = $(document, '#active-banner');
   const s = sessionStore.get();
   const { path } = currentRoute();
-  const onFlow = ['/send', '/receive', '/transfer'].includes(path);
+  const onFlow = ['/send', '/receive', '/transfer', '/offline-send', '/offline-receive'].includes(path);
   if (s.phase === 'transferring' && path !== '/transfer') { b.hidden = false; b.innerHTML = 'A transfer is in progress. <a href="#/transfer">View progress</a>'; }
-  else if (['waiting', 'connecting', 'awaiting-accept'].includes(s.phase) && !onFlow) { b.hidden = false; b.innerHTML = `A ${s.role === 'sender' ? 'send' : 'receive'} session is open. <a href="#/${s.role === 'sender' ? 'send' : 'receive'}">Return</a>`; }
+  else if (['waiting', 'connecting', 'awaiting-accept', 'offline-show-offer', 'offline-scan-offer', 'offline-show-answer'].includes(s.phase) && !onFlow) { b.hidden = false; b.innerHTML = `A ${s.role === 'sender' ? 'send' : 'receive'} session is open. <a href="#/${s.offline ? 'offline-' : ''}${s.role === 'sender' ? 'send' : 'receive'}">Return</a>`; }
   else b.hidden = true;
 }
 
@@ -60,8 +61,10 @@ function paintBanner() {
 sessionStore.subscribe((s, prev) => {
   if (s.phase !== prev.phase) {
     const { path } = currentRoute();
-    if (s.phase === 'transferring' && ['/send', '/receive'].includes(path)) location.hash = '#/transfer';
-    else if (s.phase === 'done' && ['/send', '/receive', '/transfer'].includes(path)) location.hash = '#/success';
+    const flow = ['/send', '/receive', '/offline-send', '/offline-receive'];
+    if (s.phase === 'awaiting-accept' && ['/offline-send', '/offline-receive'].includes(path)) location.hash = s.role === 'sender' ? '#/send' : '#/receive';
+    else if (s.phase === 'transferring' && flow.includes(path)) location.hash = '#/transfer';
+    else if (s.phase === 'done' && [...flow, '/transfer'].includes(path)) location.hash = '#/success';
     else if (s.phase === 'failed') toast(s.error?.message || 'Transfer failed', 'error', 6000);
   }
   paintBanner();

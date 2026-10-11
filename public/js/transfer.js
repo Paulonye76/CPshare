@@ -336,7 +336,7 @@ export class TransferSession {
       this.sinks.delete(sink);
       this.lastReported = this.processedBytes;
       this._trySend({ t: 'wnd', n: this.processedBytes });
-      const entry = { index: rx.index, name: rx.name, size: rx.size, sha256: hex, blob, release: () => sink.release() };
+      const entry = { index: rx.index, name: rx.name, size: rx.size, type: rx.type, sha256: hex, blob, release: () => sink.release() };
       this.received.push(entry);
       this.received.sort((a, b) => a.index - b.index);
       this.filesDone += 1;

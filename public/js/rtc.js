@@ -2,7 +2,9 @@
 // callbacks you provide; file bytes travel only over the RTCDataChannel.
 export const CHANNEL_LABEL = 'cp-transfer';
 
-export function createPeer({ role, iceServers, sendSignal, onChannel, onState }) {
+// gatherAll: wait until ICE gathering finishes and send ONE complete description (no trickle).
+// Used by offline QR pairing, where the description is carried in a QR code.
+export function createPeer({ role, iceServers, sendSignal, onChannel, onState, gatherAll = false }) {
   const pc = new RTCPeerConnection({ iceServers: iceServers || [] });
   const pending = [];
   let remoteSet = false;
@@ -11,7 +13,15 @@ export function createPeer({ role, iceServers, sendSignal, onChannel, onState })
 
   const emitState = (s) => { if (!closed) onState?.(s); };
 
-  pc.onicecandidate = (e) => sendSignal({ type: 'candidate', candidate: e.candidate ? e.candidate.toJSON() : null });
+  const gathered = () => new Promise((resolve) => {
+    if (pc.iceGatheringState === 'complete') return resolve();
+    const done = () => { clearTimeout(t); pc.removeEventListener('icegatheringstatechange', on); resolve(); };
+    const on = () => { if (pc.iceGatheringState === 'complete') done(); };
+    const t = setTimeout(done, 4000);
+    pc.addEventListener('icegatheringstatechange', on);
+  });
+
+  pc.onicecandidate = (e) => gatherAll || sendSignal({ type: 'candidate', candidate: e.candidate ? e.candidate.toJSON() : null });
   pc.onconnectionstatechange = () => {
     const s = pc.connectionState;
     clearTimeout(disconnectTimer);
@@ -38,6 +48,7 @@ export function createPeer({ role, iceServers, sendSignal, onChannel, onState })
     async start() {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+      if (gatherAll) await gathered();
       sendSignal({ type: 'offer', sdp: pc.localDescription.sdp });
     },
     async handleSignal(m) {
@@ -48,6 +59,7 @@ export function createPeer({ role, iceServers, sendSignal, onChannel, onState })
         for (const c of pending.splice(0)) await addCandidate(c);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
+        if (gatherAll) await gathered();
         sendSignal({ type: 'answer', sdp: pc.localDescription.sdp });
       } else if (m.type === 'answer' && role === 'sender') {
         await pc.setRemoteDescription({ type: 'answer', sdp: m.sdp });
